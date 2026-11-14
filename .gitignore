@@ -1,0 +1,41 @@
+# Proprietary and runtime game files
+data.win
+*.exe
+saveData.ini
+
+# Prepared texture caches and large binary dumps
+/assets/texture-cache/
+/assets/pvr/
+*.pvr
+*.r444
+*.patch
+
+# Builds, VPKs and binaries
+/artifacts/
+**/build/
+**/build-*/
+*.vpk
+*.bin
+*.elf
+*.velf
+*.sfo
+*.out
+*.suprx
+*.a
+*.o
+*.obj
+
+# Logs and diagnostic dumps
+/Logs/
+*.log
+*.dmp
+*.psp2dmp
+
+# Python and cache
+__pycache__/
+*.pyc
+
+# IDE and OS files
+.vscode/
+.DS_Store
+Thumbs.db
