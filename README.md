@@ -1,4 +1,7 @@
 <p align="center">
+  <img src="https://github.com/user-attachments/assets/a0e867da-8809-422a-92db-8d5e213b137e" alt="Pizza Tower Vita" width="220">
+</p>
+<p align="center">
   An unofficial port of <strong>Pizza Tower SAGE 2019 Demo (v14)</strong> for the PlayStation Vita.
 </p>
 
