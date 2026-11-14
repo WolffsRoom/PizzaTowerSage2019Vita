@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="assets/Sage2019Vita.png" alt="Pizza Tower SAGE 2019 Demo Vita" width="850">
+  An unofficial port of <strong>Pizza Tower SAGE 2019 Demo (v14)</strong> for the PlayStation Vita.
 </p>
 
 <p align="center">
-  An unofficial port of <strong>Pizza Tower SAGE 2019 Demo (v14)</strong> for the PlayStation Vita.
+  <img src="assets/Sage2019Vita.png" alt="Pizza Tower SAGE 2019 Demo Vita" width="850">
 </p>
 
 <p align="center">
@@ -16,6 +16,8 @@ PizzaTowerSage2019Vita runs the official Windows GameMaker data of the famous SA
 
 > [!IMPORTANT]
 > This repository and its releases do **not** include Pizza Tower's proprietary game data. You must obtain the free demo from the official [Pizza Tower SAGE 2019 itch.io page](https://tour-de-pizza.itch.io/pizza-tower-sage-expo-2019-demo). The VPK cannot run by itself: the user's `data.win` must be copied to the Vita.
+
+## Project Status
 
 <div align="center">
   <a href="https://github.com/WolffsRoom/PizzaTowerSage2019Vita/releases"><img src="https://img.shields.io/github/downloads/WolffsRoom/PizzaTowerSage2019Vita/total?style=for-the-badge&color=blue&logo=github" alt="Downloads"></a>
@@ -194,6 +196,8 @@ PizzaTowerSage2019Vita does not emulate Windows and does not execute the PC bina
 - **[VitaGL](https://github.com/Rinnegatamante/vitaGL)** by Rinnegatamante — OpenGL acceleration for PS Vita.
 - **[VitaSDK](https://vitasdk.org/)** and the PlayStation Vita homebrew development community.
 - **[UndertaleModTool](https://github.com/UnderminersTeam/UndertaleModTool)** — bytecode analysis and data validation.
+
+Gemini 4 Argon was used as a development assistant for diagnostics, implementation support, project organization and technical documentation. All changes remain subject to project review and real-hardware testing.
 
 ---
 
