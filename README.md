@@ -36,14 +36,18 @@ PizzaTowerSage2019Vita runs the official Windows GameMaker data of the famous SA
 
 The current release build is **v0.55**, based on the Windows **SAGE 2019 Demo (v14)**. It is fully playable from start to finish on real PlayStation Vita hardware at a rock-solid 60 FPS.
 
+Explore all three stages from the original SAGE 2019 Demo. Complete them all to unlock a secret bonus challenge: **Snick's Challenge**!
+- **Pizzascape** (Medieval)
+- **Ancient Cheese** (Ancient)
+- **Bloodsauce Dungeon** (Dungeon)
+
+**Bonus Stage:** Snick's Challenge — A timed challenge combining all three stages!
+
 **Working in the current build:**
-- Full access to all 3 demo stages: **Pizzascape** (Medieval), **Oregano Desert** (Western), and **The Snick Challenge** (Ancient);
 - Complete Hub world, secret areas, Pizza Time countdown, and rank tallying;
 - Rock-solid 60 FPS gameplay accelerated by VitaGL hardware rendering;
 - Physical Vita controls mapped to native gamepad inputs with custom PlayStation glyphs;
-- Fully restored `pal_swapper` shader for Peppino's outfit colors and transformation states;
 - Lazy OpenAL audio streaming for all 91 sound effects and music tracks without RAM exhaustion;
-- Corrected Super Jump launch mechanics and analog stick deadzones;
 - Overhauled settings menu with clean font rendering;
 - Dedicated LiveArea presence with custom icon, splash screen, and digital manual.
 
