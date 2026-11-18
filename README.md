@@ -43,13 +43,6 @@ Explore all three stages from the original SAGE 2019 Demo. Complete them all to 
 
 **Bonus Stage:** Snick's Challenge — A timed challenge combining all three stages!
 
-Explore all three stages from the original SAGE 2019 Demo. Complete them all to unlock a secret bonus challenge: **Snick's Challenge**!
-- **Pizzascape** (Medieval)
-- **Ancient Cheese** (Ancient)
-- **Bloodsauce Dungeon** (Dungeon)
-
-**Bonus Stage:** Snick's Challenge — A timed challenge combining all three stages!
-
 **Working in the current build:**
 - Complete Hub world, secret areas, Pizza Time countdown, and rank tallying;
 - Rock-solid 60 FPS gameplay accelerated by VitaGL hardware rendering;
