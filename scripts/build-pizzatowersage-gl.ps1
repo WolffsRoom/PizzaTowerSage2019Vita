@@ -19,13 +19,13 @@ docker run --rm `
 
 if ($LASTEXITCODE -ne 0) { throw "Build falhou com codigo $LASTEXITCODE." }
 
-$output = Join-Path $rootPath 'artifacts\current\PizzaTowerSAGE-v0.55.vpk'
+$output = Join-Path $rootPath 'artifacts\current\PizzaTowerSAGE-v0.62.vpk'
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $output) | Out-Null
-Copy-Item -Force (Join-Path $project 'build-vita\PizzaTowerSAGE-v0.55.vpk') $output
+Copy-Item -Force (Join-Path $project 'build-vita\PizzaTowerSAGE-v0.62.vpk') $output
 
-$releaseDir = Join-Path $rootPath 'artifacts\Release v0.55'
+$releaseDir = Join-Path $rootPath 'artifacts\Release v0.62'
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
-Copy-Item -Force (Join-Path $project 'build-vita\PizzaTowerSAGE-v0.55.vpk') (Join-Path $releaseDir 'PizzaTowerSAGE-v0.55.vpk')
+Copy-Item -Force (Join-Path $project 'build-vita\PizzaTowerSAGE-v0.62.vpk') (Join-Path $releaseDir 'PizzaTowerSAGE-v0.62.vpk')
 
 Write-Host "VPK gerado com sucesso: $output"
-Write-Host "Copia de release: $(Join-Path $releaseDir 'PizzaTowerSAGE-v0.55.vpk')"
+Write-Host "Copia de release: $(Join-Path $releaseDir 'PizzaTowerSAGE-v0.62.vpk')"

@@ -34,17 +34,24 @@ PizzaTowerSage2019Vita runs the official Windows GameMaker data of the famous SA
 
 ---
 
-The current release build is **v0.55**, based on the Windows **SAGE 2019 Demo (v14)**. It is fully playable from start to finish on real PlayStation Vita hardware at a rock-solid 60 FPS.
+The current release build is **v0.62**, based on the Windows **SAGE 2019 Demo (v14)**. It is fully playable from start to finish on real PlayStation Vita hardware at a rock-solid 60 FPS with zero GPU crashes.
+
+Explore all three stages from the original SAGE 2019 Demo. Complete them all to unlock a secret bonus challenge: **Snick's Challenge**!
+- **Pizzascape** (Medieval)
+- **Ancient Cheese** (Ancient)
+- **Bloodsauce Dungeon** (Dungeon)
+
+**Bonus Stage:** Snick's Challenge — A timed challenge combining all three stages!
 
 **Working in the current build:**
-- Full access to all 3 demo stages: **Pizzascape** (Medieval), **Oregano Desert** (Western), and **The Snick Challenge** (Ancient);
 - Complete Hub world, secret areas, Pizza Time countdown, and rank tallying;
 - Rock-solid 60 FPS gameplay accelerated by VitaGL hardware rendering;
 - Physical Vita controls mapped to native gamepad inputs with custom PlayStation glyphs;
-- Fully restored `pal_swapper` shader for Peppino's outfit colors and transformation states;
+- Fully restored `pal_swapper` shader for Peppino's SAGE Blue outfit (`(48, 168, 248)`) and transformation states with zero extra VRAM cost;
+- Permanent BC3 (DXT5) PVR texture residency (~87 MiB total across all 35 pages) + hardware room-transition GPU synchronization barrier (`PizzaSage_beforeRoomChange`);
 - Lazy OpenAL audio streaming for all 91 sound effects and music tracks without RAM exhaustion;
-- Corrected Super Jump launch mechanics and analog stick deadzones;
-- Overhauled settings menu with clean font rendering;
+- Corrected Super Jump launch mechanics and analog stick upward-drift protection;
+- Native SAGE in-game pause menu on **Start** (Continue, Retry Level, Title Screen) and port settings menu on **Select**;
 - Dedicated LiveArea presence with custom icon, splash screen, and digital manual.
 
 ---
@@ -76,7 +83,8 @@ Pizza Tower SAGE recognizes the PlayStation Vita as a native gamepad controller.
 
 | PS Vita Input | Glyph | Game / Runtime Input | Action |
 | :--- | :---: | :--- | :--- |
-| **D-Pad / Left Stick** | <img src="assets/ps4_glyphs/dpad.png" height="24" alt="D-Pad"> | Directional input (`vk_left`/`vk_right`/`vk_up`/`vk_down`) | Move Peppino, duck, look up, navigate menus |
+| **D-Pad** | <img src="assets/ps4_glyphs/dpad.png" height="24" alt="D-Pad"> | Directional input (`vk_left`/`vk_right`/`vk_up`/`vk_down`) | Move Peppino, duck, enter doors / level computers (**D-Pad Up**), charge Super Jump (**D-Pad Up** while running), navigate menus |
+| **Left Stick** | <img src="assets/ps4_glyphs/dpad.png" height="24" alt="Left Stick"> | Horizontal & Down analog input (`ax`, `ay > 0`) | Move Peppino left/right, crouch/dive (**Down**); upward tilt is ignored to prevent stick drift or diagonal running from triggering doors or Super Jump |
 | **Cross** | <img src="assets/ps4_glyphs/cross.png" height="24" alt="Cross"> | Gamepad Face 1 / `Z` fallback | Jump, confirm in menus, release Super Jump |
 | **Square** | <img src="assets/ps4_glyphs/square.png" height="24" alt="Square"> | Gamepad Face 3 / `Shift` fallback | Mach Dash / Run, accelerate |
 | **Circle** | <img src="assets/ps4_glyphs/circle.png" height="24" alt="Circle"> | Gamepad Face 2 / `X` fallback | Grab / Dash Attack, cancel in menus |
@@ -108,17 +116,39 @@ Based on the development documentation and hardware testing logs, multiple enhan
 * **Solution**: Developed a streaming audio pipeline in OpenAL that parses the `AUDO` data chunk dynamically. Audio data is streamed on demand rather than bulk-loaded into system RAM.
 * **RIFF Subchunk Sanitization**: Implemented robust header filtering to ignore non-audio metadata blocks (such as `LIST` info chunks), eliminating high-pitched digital chirping artifacts.
 
-### 3. GPU Texture Cache and Preloading
-* **Texture Preparation**: Prepared hardware-accelerated GPU textures (PVR/BC3 DXT5 and RGBA4444) across all 35 demo texture pages.
-* **Eviction Protection**: Essential UI elements, fonts, HUD elements, and player animation pages are protected from aggressive eviction, avoiding frame drops when traversing rooms.
+### 3. GPU Texture Cache, Permanent BC3 Residency, and GPU Crash Prevention (v0.60 / v0.61)
+* **Root Cause of v0.56–v0.59 GPU Crashes**:
+  * In `v0.56`–`v0.59`, `PizzaVitaTexturePolicy_useBc3` disabled BC3 (DXT5) textures whenever `PIZZA_ROOM_ATLAS_BC3` was not defined, forcing all 2048×2048 texture pages into uncompressed RGBA4444 (8 MiB per page instead of 4 MiB).
+  * Additionally, `v0.59` disabled `vitaModernPermanentSmallGame` for `PIZZA_SAGE_2019` and capped resident textures at 144 MiB while inflating VitaGL runtime buffers. This triggered mid-frame texture evictions (`glDeleteTextures` / `vglFree`) while the PowerVR SGX543 GPU still had asynchronous draw lists referencing those textures in flight, causing fatal CDRAM page faults and GPU crashes during room transitions.
+* **Permanent BC3 Residency Architecture**:
+  * Restored `PizzaVitaTexturePolicy_useBc3` for `PIZZA_SAGE_2019` (`2048×2048` and `1024×2048` pages) and re-enabled `vitaModernPermanentSmallGame(gl) == true` with no artificial residency cap.
+  * The 30 non-patched texture pages load directly from pre-baked BC3 `.pvr` assets in `app0:assets/pvr/` (`4 MiB` per 2048×2048 page), while the 5 glyph-patched UI pages (`pages 1, 8, 13, 15, 20`) are excluded from runtime BC3 re-compression (`!vitaModernPageHasPatch(pageId)`) and uploaded once as lossless `RGBA4444`.
+  * All 35 texture pages fit permanently in memory (~87.6 MiB total, leaving ~80 MiB of free RAM), **completely eliminating mid-game texture eviction and freeing**.
+  * Added a header-stub validation check (`st.st_size > sizeof(VitaModernTextureCacheHeader)`) in `vitaModernLoadPreparedTexture` so 20-byte `.r444` header stubs in `app0:` never shadow full textures or `.pvr` files.
+* **Room Transition GPU Drain Barrier (`PizzaSage_beforeRoomChange`)**:
+  * Before any room transition executes `Room End` or `Room Create` events (which may reallocate or resize render targets/surfaces), the runner flushes the renderer batch and calls `glFinish()`, ensuring the SGX543 hardware pipeline has completely drained all pending scene commands.
 
-### 4. SGX543-Compliant Palette Swap Shader (`pal_swapper`)
-* **Problem in Original**: The original GameMaker Studio shader used dynamic float-based loop iteration (`for (float i = ...)`), which is forbidden by the PowerVR SGX543 GLSL ES 1.00 compiler specification.
-* **Solution**: Re-engineered `pal_swapper` with integer loops and normalized texture coordinate lookups. Peppino's palette swaps (clothes, outfits) and transformation visual effects now render authentically.
+### 4. SGX543-Compliant Palette Swap Shader (`pal_swapper`) & Zero-VRAM BC3 Key Tagging
+* **Problem in Original**:
+  1. The original GameMaker Studio shader used dynamic float-based loop iteration (`for (float i = ...)`), which is rejected by the PowerVR SGX543 GLSL ES 1.00 (`SceShaccCg`) compiler.
+  2. When Peppino's sprite sheets were compressed into DXT5/BC3 4×4 blocks, the two RGB565 endpoints interpolated intermediate colors inside 4×4 blocks containing both the yellow outfit `(255, 255, 64)` and the red-brown shading `(152, 80, 48)`, shifting the RGB values of the yellow pixels enough to miss RGB-only shader comparisons (or causing false positives on adjacent sprites if the RGB tolerance was widened).
+* **Zero-VRAM Solution**:
+  * Re-encoded only the 4×4 BC3 blocks containing Peppino's `(255, 255, 64)` outfit pixels across the pre-baked `assets/pvr/page_*.bc3.pvr` files:
+    * **2-color blocks** (yellow + transparent, or yellow + black outline): encoded with an exact RGB565 endpoint `0xFFE8` (`(255, 255, 66)`).
+    * **3+ color blocks** (yellow + outline + shading): encoded the yellow pixels with a dedicated 3-bit BC3 interpolated alpha code (`code 2`, `alpha = 219/255 ≈ 0.8588`, `[0.84, 0.88]`), while all normal opaque pixels retain `alpha = 1.0`.
+  * In `pizzaVitaPalSwapperFragmentShader`, `spr_peppalette` (4×6) is resolved directly with exact 24-bit RGB palette values — mapping `palette_index == 2` to **SAGE Blue `(48, 168, 248)`** — whenever the pixel matches the exact RGB565 key or carries the `0.8588` alpha tag, and then restores `gl_FragColor.a = 1.0`. This achieves 100% pixel-accurate SAGE Blue clothes with **zero extra texture memory**.
 
-### 5. Super Jump and Input Engine Overhaul
-* **Super Jump Launch (`scr_player_Sjumpprep`)**: In the original PC GameMaker code, launching a charged Super Jump strictly checked for `!key_up` (releasing Up). On console/handheld controllers, players instinctively hit **Cross (Jump)** or release the stick. If Up was held while pressing Jump, Peppino remained permanently stuck in the crouched charging animation. The Vita runner now releases `key_up` and launches the jump upon pressing **Cross**, with a fail-safe state transition to `scr_player_Sjump` (State 62).
-* **Analog Deadzone Calibration**: Fixed an issue in `scr_getinput` where slight analog stick resting variance caused unintended vertical input, locking Peppino in ducking or crawling animations.
+### 5. Super Jump, Pause Menu, and Input Engine Overhaul (v0.62)
+* **Super Jump Launch (`scr_player_Sjumpprep`)**: In the original PC GameMaker code, launching a charged Super Jump strictly checked for `!key_up` (releasing Up). On console/handheld controllers, players instinctively hit **Cross (Jump)** or release Up. The Vita runner launches the jump immediately upon pressing **Cross** or releasing **D-Pad Up**, with a fail-safe state transition to `scr_player_Sjump` (State 62).
+* **Elimination of Phantom "Up" Input (`VK_NOKEY` / `global.key_up` & Stick Drift)**:
+  * **Root Cause 1 (`VK_NOKEY = 0` in `saveData.ini`)**: If the legacy PC keybind screen (`obj_keyconfig`) ever ran in an earlier session, it wrote `up = "0"` (`VK_NOKEY`) into `[ControlsKeys]` in `ux0:data/pizzatowersage/save/saveData.ini`. When `scr_getinput` called `keyboard_check(global.key_up)` with `0` (`VK_NOKEY`), `RunnerKeyboard_check(kb, VK_NOKEY)` evaluated `!checkIfAnyKey(kb->keyDown)` — which returned **`true` on every single frame** because no keyboard keys are held on PS Vita! Moreover, `key_up` exists twice in `data.win`'s `VARI` table (`var_id = 85` for `INSTANCE_SELF` and `var_id = 325` for `INSTANCE_GLOBAL`), so looking up `"key_up"` in `ctx->varNameMap` only resolved the self `var_id` (`85`), leaving `global.key_up` (`325`) equal to `"0"`. That caused `key_up` to stay permanently `true`, making Peppino immediately enter Super Jump prep (`state = 64`) the instant Dash reached Mach 3 (`scr_player_mach3`) and automatically enter level selector PCs (`obj_startgate`) on contact.
+  * **Root Cause 2 (Analog Stick Drift)**: Upward left-stick resting drift (`pad.ly < 128`) or slight diagonal upward tilt while running could also trigger `gamepad_axis_value(0, gp_axislv) < 0`.
+  * **Fix in v0.62**:
+    1. `RunnerKeyboard_check`, `RunnerKeyboard_checkPressed`, and `RunnerKeyboard_checkReleased` now return `false` for `VK_NOKEY` (`0`) on `PLATFORM_VITA`.
+    2. `pizza_enforce_default_input_bindings` now resolves `INSTANCE_GLOBAL` (`inst_type == -5`, `var_id = 325..344`) directly in `dataWin->vari.variables`, restoring all `global.key_*` and `global.key_*C` bindings on `globalScopeInstance`.
+    3. `PizzaSage_applyPauseInput` hooks the completion of `gml_Script_scr_getinput` for all instances and enforces `self.key_up = pad->buttonDown[12]` and `self.key_up2 = pad->buttonPressed[12]`.
+    4. Upward deflection on the left analog stick (`dy < 0`) is clamped to `0` (`ay >= 0`), so **Up** is controlled exclusively by **D-Pad Up** (and touch Up when touch controls are enabled).
+* **Original SAGE Pause Menu on Start**: Pressing **Start** during gameplay opens SAGE 2019's native pause screen (`obj_pause`) with full controller navigation (**D-Pad Up/Down** and **Cross**) for **Continue**, **Retry Level**, and **Title Screen**. Pressing **Select** opens the port's native settings overlay.
 
 ### 6. Modern Options Menu and Font Atlas Cleanup
 * **Menu Unfreeze Fix**: In the PC version, opening Options set `selected = 1` in `obj_mainmenuselect`. When closing the custom settings menu, `selected` was left locked, permanently freezing main menu navigation. The runner now cleanly resets cursor control.
@@ -151,13 +181,13 @@ You will need both the Vita port VPK and the original PC demo game files:
 
 | File | Description | Source |
 | :--- | :--- | :---: |
-| **`PizzaTowerSAGE-v0.55.vpk`** | Handheld port executable and runtime assets for the PS Vita. | [Download VPK](https://github.com/WolffsRoom/PizzaTowerSage2019Vita/releases/latest) |
+| **`PizzaTowerSAGE-v0.62.vpk`** | Handheld port executable and runtime assets for the PS Vita. | [Download VPK](https://github.com/WolffsRoom/PizzaTowerSage2019Vita/releases/latest) |
 | **`data.win`** | Original GameMaker game data extracted from the free PC demo. | [Pizza Tower Demo by PizzaTowerGuy](https://pizzatowerguy.itch.io/pizza-tower-demo) |
 
 </div>
 
 ### Step-by-Step Guide:
-1. **Download the Port:** Grab the latest `PizzaTowerSAGE-v0.55.vpk` from [GitHub Releases](https://github.com/WolffsRoom/PizzaTowerSage2019Vita/releases/latest).
+1. **Download the Port:** Grab the latest `PizzaTowerSAGE-v0.62.vpk` from [GitHub Releases](https://github.com/WolffsRoom/PizzaTowerSage2019Vita/releases/latest).
 2. **Download the Game Data:** Visit [Pizza Tower Demo by PizzaTowerGuy](https://pizzatowerguy.itch.io/pizza-tower-demo) on itch.io and download the free demo package.
 3. **Extract `data.win`:** Unzip the downloaded file on your computer and locate `data.win`.
 
@@ -165,7 +195,7 @@ You will need both the Vita port VPK and the original PC demo game files:
 
 ## Installation Guide
 
-1. Install `PizzaTowerSAGE-v0.55.vpk` on your PS Vita using **VitaShell**.
+1. Install `PizzaTowerSAGE-v0.62.vpk` on your PS Vita using **VitaShell**.
 2. Connect your PS Vita to your PC (via USB or FTP in VitaShell).
 3. Ensure the folder `ux0:data/pizzatowersage/` exists on your Vita memory card. If not, create it.
 4. Copy the extracted `data.win` file to:
@@ -186,7 +216,7 @@ To compile the PlayStation Vita executable and package the VPK using the VitaSDK
 
 The output VPK will be generated in:
 ```text
-artifacts/current/PizzaTowerSAGE-v0.55.vpk
+artifacts/current/PizzaTowerSAGE-v0.62.vpk
 ```
 
 ---

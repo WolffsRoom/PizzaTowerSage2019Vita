@@ -223,6 +223,96 @@ static bool pizza_set_real_var(Runner* runner, Instance* inst, const char* name,
     Instance_setSelfVar(inst, varId, RValue_makeReal(value));
     return true;
 }
+
+static int32_t pizza_find_global_var_id(Runner* runner, const char* name) {
+    if (runner == NULL || runner->dataWin == NULL || name == NULL) return -1;
+    DataWin* dw = runner->dataWin;
+    for (uint32_t i = 0; i < dw->vari.variableCount; ++i) {
+        const Variable* v = &dw->vari.variables[i];
+        if (v->instanceType == INSTANCE_GLOBAL && v->varID >= 0 && v->name != NULL && strcmp(v->name, name) == 0) {
+            return v->varID;
+        }
+    }
+    return -1;
+}
+
+static void pizza_enforce_default_input_bindings(Runner* runner) {
+    if (runner == NULL || runner->vmContext == NULL || runner->vmContext->globalScopeInstance == NULL) return;
+    static bool initialized = false;
+    static struct { const char* name; double val; int32_t varId; } bindings[] = {
+        {"key_up", 38.0, -1},
+        {"key_down", 40.0, -1},
+        {"key_left", 37.0, -1},
+        {"key_right", 39.0, -1},
+        {"key_jump", 90.0, -1},
+        {"key_slap", 88.0, -1},
+        {"key_taunt", 67.0, -1},
+        {"key_shoot", 67.0, -1},
+        {"key_attack", 16.0, -1},
+        {"key_start", 27.0, -1},
+        {"key_upC", 32781.0, -1},
+        {"key_downC", 32782.0, -1},
+        {"key_leftC", 32783.0, -1},
+        {"key_rightC", 32784.0, -1},
+        {"key_jumpC", 32769.0, -1},
+        {"key_slapC", 32771.0, -1},
+        {"key_tauntC", 32772.0, -1},
+        {"key_shootC", 32770.0, -1},
+        {"key_attackC", 32774.0, -1},
+        {"key_startC", 32778.0, -1},
+    };
+    if (!initialized) {
+        for (size_t i = 0; i < sizeof(bindings) / sizeof(bindings[0]); ++i) {
+            bindings[i].varId = pizza_find_global_var_id(runner, bindings[i].name);
+        }
+        initialized = true;
+    }
+    Instance* glob = runner->vmContext->globalScopeInstance;
+    for (size_t i = 0; i < sizeof(bindings) / sizeof(bindings[0]); ++i) {
+        if (bindings[i].varId >= 0) {
+            Instance_setSelfVar(glob, bindings[i].varId, RValue_makeReal(bindings[i].val));
+        }
+    }
+}
+
+/* Called whenever gml_Script_scr_getinput returns.
+ * Enforces clean controller Up/Up2 state on the calling instance (so corrupted
+ * global.key_up=0 / VK_NOKEY in saveData.ini or stick drift can never latch key_up)
+ * and provides controller navigation to obj_pause_Step_0. */
+void PizzaSage_applyPauseInput(VMContext* ctx) {
+    Runner* runner = ctx->runner;
+    if (!runner || !runner->gamepads || !ctx->currentInstance) return;
+    pizza_enforce_default_input_bindings(runner);
+    const GamepadSlot* pad = &runner->gamepads->slots[0];
+    Instance* inst = ctx->currentInstance;
+    pizza_set_bool_var(runner, inst, "key_up", pad->buttonDown[12]);
+    pizza_set_bool_var(runner, inst, "key_up2", pad->buttonPressed[12]);
+    if (ctx->currentCodeName && strcmp(ctx->currentCodeName, "gml_Object_obj_pause_Step_0") == 0) {
+        pizza_set_bool_var(runner, inst, "key_down2", pad->buttonPressed[13]);
+        pizza_set_bool_var(runner, inst, "key_jump", pad->buttonPressed[0]);
+        pizza_set_bool_var(runner, inst, "key_jump2", pad->buttonDown[0]);
+    }
+}
+
+#ifndef PIZZA_NATIVE_GXM
+static bool sage_trace_next_room_frame;
+
+/* Called by the runner before Room End/Create can release or replace targets,
+ * including room requests that the runner handles inside Step. */
+void PizzaSage_beforeRoomChange(Runner* runner) {
+    char line[112];
+    snprintf(line, sizeof(line), "SAGE_ROOM_BOUNDARY from=%d to=%d phase=drain_begin",
+             runner->currentRoomIndex, runner->pendingRoom);
+    log_line(line);
+    runner->renderer->vtable->flush(runner->renderer);
+    glFinish();
+    sage_trace_next_room_frame = true;
+    snprintf(line, sizeof(line), "SAGE_ROOM_BOUNDARY phase=drain_complete vram_free=%u ram_free=%u",
+             (unsigned)vglMemFree(VGL_MEM_VRAM), (unsigned)vglMemFree(VGL_MEM_RAM));
+    log_line(line);
+}
+#endif
+
 static int pizza_read_int_var(Runner* runner, Instance* inst, const char* varName, bool* found) {
     if (found != NULL) *found = false;
     if (runner == NULL || inst == NULL || varName == NULL || runner->vmContext == NULL) return 0;
@@ -333,9 +423,9 @@ int main(void) {
     int active_chapter = 1;
 
 #ifdef PIZZA_NATIVE_GXM
-    log_line("Pizza Tower SAGE 2019 Vita v0.55 | Native GXM");
+    log_line("Pizza Tower SAGE 2019 Vita v0.62 | Native GXM");
 #else
-    log_line("Pizza Tower SAGE 2019 Vita v0.55 | VitaGL");
+    log_line("Pizza Tower SAGE 2019 Vita v0.62 | VitaGL");
 #endif
     log_line("MAIN_STACK=4194304");
     char startup_line[96];
@@ -463,7 +553,9 @@ int main(void) {
 #ifdef PIZZA_NATIVE_GXM
     PizzaGxm_begin(renderer);
 #endif
+    pizza_enforce_default_input_bindings(runner);
     Runner_initFirstRoom(runner);
+    pizza_enforce_default_input_bindings(runner);
 #ifdef PIZZA_NATIVE_GXM
     PizzaGxm_present(renderer);
     BSContractRenderer_roomEntered(renderer);
@@ -525,6 +617,12 @@ int main(void) {
     }
 
     while (!exit_requested && !runner->shouldExit) {
+        bool trace_room_frame = false;
+#ifndef PIZZA_NATIVE_GXM
+        trace_room_frame = sage_trace_next_room_frame;
+        sage_trace_next_room_frame = false;
+#endif
+
         RunnerKeyboard_beginFrame(runner->keyboard);
         RunnerGamepad_beginFrame(runner->gamepads);
         RunnerMouse_beginFrame(runner->mouse);
@@ -685,6 +783,8 @@ int main(void) {
                 }
             }
         }
+        Instance* activePlayerForInput = pizza_find_active_instance(runner, "obj_player1");
+        if (!activePlayerForInput) activePlayerForInput = pizza_find_active_instance(runner, "obj_player");
         const bool controls_enabled = !native_pause.open && !pause_was_open;
         const bool select_down = false; // SELECT belongs exclusively to the port menu.
         PizzaVitaQualityChordResult chord_result = PizzaVitaPolicy_updateQualityChord(
@@ -711,16 +811,25 @@ int main(void) {
         } else if (touch_axis_x != 0.0f) {
             ax = touch_axis_x;
         }
+        /* Do not map upward left analog stick deflection (dy < 0) to Up.
+         * Up (entering doors, level selector PCs, ladders, and charging Super Jump)
+         * is controlled exclusively by D-Pad Up (SCE_CTRL_UP) or touch_up, so
+         * upward stick drift or diagonal running tilt never triggers key_up. */
+        if (dy < 0) dy = 0;
         if (abs(dy) > STICK_DEADZONE) {
             float norm = (float)(abs(dy) - STICK_DEADZONE) / (127.0f - STICK_DEADZONE);
             if (norm > 1.0f) norm = 1.0f;
             ay = (dy > 0) ? norm : -norm;
-        } else if (touch_axis_y != 0.0f) {
+        } else if (touch_axis_y > 0.0f) {
             ay = touch_axis_y;
         }
-        gamepad_input.leftX = ax;
-        gamepad_input.leftY = ay;
-        gamepad_input.up = controls_enabled && ((pad.buttons & SCE_CTRL_UP) || ay < -0.40f || touch_up);
+        bool stick_vertical = abs(dy) >= 76 && abs(dy) >= abs(dx) + 18;
+        if (abs(dy) > STICK_DEADZONE && !stick_vertical) ay = 0.0f;
+        if (abs(dy) <= STICK_DEADZONE && !touch_down) ay = 0.0f;
+        if (ay < 0.0f) ay = 0.0f;
+        gamepad_input.leftX = controls_enabled ? ax : 0.0f;
+        gamepad_input.leftY = controls_enabled ? ay : 0.0f;
+        gamepad_input.up = controls_enabled && ((pad.buttons & SCE_CTRL_UP) || touch_up);
         gamepad_input.down = controls_enabled && ((pad.buttons & SCE_CTRL_DOWN) || ay > 0.40f || touch_down);
         gamepad_input.left = controls_enabled && ((pad.buttons & SCE_CTRL_LEFT) || ax < -0.40f || touch_left);
         gamepad_input.right = controls_enabled && ((pad.buttons & SCE_CTRL_RIGHT) || ax > 0.40f || touch_right);
@@ -732,15 +841,15 @@ int main(void) {
         gamepad_input.rightShoulder = controls_enabled && (pad.buttons & SCE_CTRL_RTRIGGER);
         gamepad_input.start = controls_enabled && (pad.buttons & SCE_CTRL_START);
         gamepad_input.select = game_select_down;
-        Instance* activePlayerForInput = pizza_find_active_instance(runner, "obj_player1");
-        if (activePlayerForInput == NULL) activePlayerForInput = pizza_find_active_instance(runner, "obj_player");
-        if (activePlayerForInput != NULL) {
+        bool launchSuperJump = false;
+        if (controls_enabled && activePlayerForInput != NULL) {
             bool stateFound = false;
             int playerState = pizza_read_int_var(runner, activePlayerForInput, "state", &stateFound);
             if (stateFound && playerState == 64) {
                 /* In Super Jump Prep (scr_player_Sjumpprep).
                    Release super jump if CROSS is pressed or UP is released: */
-                bool crossAction = gamepad_input.cross;
+                bool crossAction = gamepad_input.cross && !runner->gamepads->slots[0].buttonDown[0];
+                launchSuperJump = crossAction;
                 bool upAction = gamepad_input.up;
                 if (crossAction || !upAction) {
                     gamepad_input.up = false;
@@ -780,8 +889,7 @@ int main(void) {
         }
 
         if (runner->gamepads->slots[0].buttonPressed[9]) {
-            Instance* player = pizza_find_active_instance(runner, "obj_player1");
-            if (pizza_set_bool_var(runner, player, "key_start", true))
+            if (pizza_set_bool_var(runner, activePlayerForInput, "key_start", true))
                 log_line("START_LATCH pre_step key_start=1");
         }
         uint64_t frame_begin = sceKernelGetProcessTimeWide();
@@ -794,13 +902,18 @@ int main(void) {
         PizzaGxm_begin(renderer);
 #endif
         uint64_t step_begin = sceKernelGetProcessTimeWide();
+        if (trace_room_frame) log_line("SAGE_ROOM_FRAME phase=step_begin");
         if (frame == 0) log_line("FRAME0=step_begin");
         if (!native_pause.open) {
+            pizza_enforce_default_input_bindings(runner);
             Runner_step(runner);
-            if (activePlayerForInput != NULL) {
+            Instance* playerAfterStep = launchSuperJump ? pizza_find_active_instance(runner, "obj_player1") : NULL;
+            if (launchSuperJump && !playerAfterStep) playerAfterStep = pizza_find_active_instance(runner, "obj_player");
+            if (playerAfterStep && playerAfterStep == activePlayerForInput) {
+                activePlayerForInput = playerAfterStep;
                 bool stateFound = false;
                 int playerState = pizza_read_int_var(runner, activePlayerForInput, "state", &stateFound);
-                if (stateFound && playerState == 64 && gamepad_input.cross) {
+                if (stateFound && playerState == 64) {
                     pizza_set_real_var(runner, activePlayerForInput, "state", 62.0);
                     pizza_set_real_var(runner, activePlayerForInput, "vsp", -15.0);
                     pizza_set_real_var(runner, activePlayerForInput, "movespeed", 0.0);
@@ -852,6 +965,7 @@ int main(void) {
             log_line("GAME_CHANGE=ignored_in_demo");
             runner->pendingWorkingDirectory = NULL;
         }
+        if (trace_room_frame) log_line("SAGE_ROOM_FRAME phase=audio_begin");
         uint64_t audio_begin = sceKernelGetProcessTimeWide();
         runner->audioSystem->vtable->update(runner->audioSystem, (float)(runner->deltaTime / 1000000.0));
         uint64_t audio_us = sceKernelGetProcessTimeWide() - audio_begin;
@@ -859,6 +973,7 @@ int main(void) {
 #ifdef PIZZA_NATIVE_GXM
         const char* activeRoomName=runner->currentRoom?runner->currentRoom->name:NULL;
 #endif
+        if (trace_room_frame) log_line("SAGE_ROOM_FRAME phase=render_begin");
         uint64_t render_begin = sceKernelGetProcessTimeWide();
         uint64_t draw_prepare_begin = render_begin;
         uint64_t draw_prepare_us = 0, world_draw_us = 0, gui_us = 0, gpu_wait_us = 0;
@@ -903,6 +1018,7 @@ int main(void) {
             log_line(prepare_line);
         }
         uint64_t world_draw_begin = sceKernelGetProcessTimeWide();
+        if (trace_room_frame) log_line("SAGE_ROOM_FRAME phase=world_begin");
         if (!native_pause.open) Runner_drawViews(runner, game_w, game_h, false);
         if (frame == 0) log_line("FRAME0=draw_views_complete");
 #ifdef PIZZA_NATIVE_GXM
@@ -926,6 +1042,7 @@ int main(void) {
 #endif
         world_draw_us = sceKernelGetProcessTimeWide() - world_draw_begin;
         uint64_t gui_begin = sceKernelGetProcessTimeWide();
+        if (trace_room_frame) log_line("SAGE_ROOM_FRAME phase=gui_begin");
         if (!native_pause.open) Runner_drawGUI(runner, 960, 544, game_w, game_h);
         VitaSettings_drawNativePause(&native_pause,&settings,renderer);
         if (frame == 0) log_line("FRAME0=draw_gui_complete");
@@ -981,7 +1098,9 @@ int main(void) {
         }
         gui_us = sceKernelGetProcessTimeWide() - gui_begin;
 #ifndef PIZZA_NATIVE_GXM
-        if (runner->pendingRoom == -1) {
+        {
+            /* Close and submit each frame, even when a room request is pending. */
+            if (trace_room_frame) log_line("SAGE_ROOM_FRAME phase=swap_begin");
             if (frame == 0) log_line("FRAME0=swap_begin");
             uint64_t gpu_wait_begin = sceKernelGetProcessTimeWide();
             // Submit with hardware vblank sync and frame pacer
@@ -989,6 +1108,7 @@ int main(void) {
             vglSwapBuffers(GL_FALSE);
             gpu_wait_us = sceKernelGetProcessTimeWide() - gpu_wait_begin;
             if (frame == 0) log_line("FRAME0=swap_complete");
+            if (trace_room_frame) log_line("SAGE_ROOM_FRAME phase=swap_complete");
         }
 #endif
         const char* previous_room_name = runner->currentRoom != NULL ? runner->currentRoom->name : NULL;

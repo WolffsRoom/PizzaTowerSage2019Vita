@@ -69,7 +69,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-  ENABLE_WAD17 ENABLE_MODERN_GL ENABLE_GLES PLATFORM_VITA PIZZA_MODERN_GL USE_OPENAL
+  ENABLE_WAD17 ENABLE_MODERN_GL ENABLE_GLES PLATFORM_VITA PIZZA_MODERN_GL PIZZA_SAGE_2019 USE_OPENAL
   VITA_MODERN_TX_CACHE_ROOT="ux0:data/pizzatowersage/texture-cache"
   VITA_MODERN_PVR_ROOT="ux0:data/pizzatowersage/pvr"
   VITA_ROOM_MANIFEST_PATH="ux0:data/pizzatowersage/room-texture-manifest.rtm"
@@ -148,8 +148,8 @@ foreach(f ${VPK_ASSETS_TXTR_PATCHES})
 endforeach()
 
 vita_create_self(eboot.bin ${PROJECT_NAME} UNSAFE)
-vita_create_vpk(PizzaTowerSAGE-v0.55.vpk PTSAGE001 eboot.bin
-  VERSION 00.55
+vita_create_vpk(PizzaTowerSAGE-v0.62.vpk PTSAGE001 eboot.bin
+  VERSION 00.62
   NAME "Pizza Tower SAGE 2019"
   FILE
     ${CMAKE_SOURCE_DIR}/../assets/icon0.png sce_sys/icon0.png
